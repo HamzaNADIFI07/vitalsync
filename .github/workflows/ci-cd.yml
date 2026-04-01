@@ -70,7 +70,7 @@ jobs:
           echo "POSTGRES_DB=vitalsync" >> .env
 
       - name: Start Staging Environment (Docker Compose)
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Wait for services to initialize
         run: sleep 10
