@@ -13,4 +13,7 @@ app.get("/api/users", (req, res) => {
   res.json([{ id: 1, name: "Nom" }]);
 });
 
+app.get("/api/stats", (req, res) => {
+  res.json({ activeUsers: 150 });
+});
 app.listen(3000, () => console.log("VitalSync API on :3000"));
