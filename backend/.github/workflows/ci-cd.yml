@@ -1,0 +1,83 @@
+name: VitalSync CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "develop" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # ÉTAPE 1 : LINT & TESTS
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        working-directory: ./backend
+        run: npm install
+
+      - name: Run ESLint
+        working-directory: ./backend
+        run: npm run lint
+
+      - name: Run Unit Tests (Jest)
+        working-directory: ./backend
+        run: npm run test
+
+  # ÉTAPE 2 : BUILD & PUSH DOCKER
+  build-and-push:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker Images
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/vitalsync-api:${{ github.sha }} ./backend
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/vitalsync-front:${{ github.sha }} ./frontend
+
+      - name: Push Docker Images
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/vitalsync-api:${{ github.sha }}
+          docker push ${{ secrets.DOCKER_USERNAME }}/vitalsync-front:${{ github.sha }}
+
+  # ÉTAPE 3 : DÉPLOIEMENT STAGING & HEALTH CHECK
+  deploy-staging:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Environment Variables
+        run: |
+          echo "POSTGRES_USER=vital_admin" > .env
+          echo "POSTGRES_PASSWORD=supersecret" >> .env
+          echo "POSTGRES_DB=vitalsync" >> .env
+
+      - name: Start Staging Environment (Docker Compose)
+        run: docker compose up -d
+
+      - name: Wait for services to initialize
+        run: sleep 10
+
+      - name: Run Health Check
+        run: |
+          echo "Pinging the backend API..."
+          # L'option -f force curl à échouer (code 22) si le code HTTP est 400 ou plus
+          curl -f http://localhost:3000/health || exit 1
+          echo "Health check passed successfully!"
